@@ -3,11 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Phaser Ship - 4-Point Physics Shape & Visible Zones</title>
+    <title>Phaser Ship - Full Window Resize</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-        canvas { border: 1px solid #fff; }
+        /* Ensure html and body take full height */
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            background-color: #222; /* Background for areas outside canvas (if any) */
+        }
+        /* Make canvas display as block to prevent extra space */
+        canvas {
+            display: block;
+            /* border: 1px solid #fff; */ /* Optional border */
+        }
     </style>
 </head>
 <body>
@@ -189,9 +199,28 @@
         } // End of PlayScene Class
 
         // --- Phaser Game Configuration ---
-        // (Config remains the same)
-        const config = { type: Phaser.AUTO, width: 800, height: 600, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, physics: { default: 'matter', matter: { gravity: { y: 0.16 }, debug: true, debugBodyColor: 0xffffff } }, scene: PlayScene, backgroundColor: '#222222' };
-
+        const config = {
+            type: Phaser.AUTO,
+            // **FIX:** Set width/height to 100%
+            width: '100%',
+            height: '100%',
+            scale: {
+                // **FIX:** Use RESIZE mode
+                mode: Phaser.Scale.RESIZE,
+                // autoCenter: Phaser.Scale.CENTER_BOTH // Not needed for RESIZE
+            },
+            physics: {
+                default: 'matter',
+                matter: {
+                    // **USER CHANGE:** Keep user's gravity value
+                    gravity: { y: 0.16 }, // User requested value
+                    debug: true,
+                    debugBodyColor: 0xffffff
+                }
+            },
+            scene: PlayScene,
+            backgroundColor: '#222222'
+        };
         // --- Create Phaser Game Instance ---
         const game = new Phaser.Game(config);
 
