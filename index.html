@@ -30,6 +30,9 @@
                 this.cursors = null;
                 this.visualLayer = null; // Renamed layer for clarity
                 this.map = null;
+                this.tilemapData = null; // Hold generated map data
+                this.mapPixelWidth = 0; // Map dimensions
+                this.mapPixelHeight = 0;
 
                 // --- Touch Control Properties ---
                 this.zoneRotate = null; this.zoneThrust = null; this.touchRotatePointer = null;
@@ -39,43 +42,81 @@
 
             preload() {
                 // --- Create Ship Texture Dynamically ---
-                // Visual uses 4 points, offset 4
+                // (Code remains the same - 64px size, 4-point visual, offset 0)
                 const shipGraphics = this.add.graphics();
                 const shipColor = 0xffffff; const shipThickness = 1.5;
-                const shipHeight = 60; const shipWidth = shipHeight * 0.8; // 42
+                const shipHeight = 60; const shipWidth = shipHeight * 0.8; // 48
                 const shipTexWidth = 64; const shipTexHeight = 64; const shipCenterX = shipTexWidth / 2; const shipCenterY = shipTexHeight / 2; // 32, 32
-                const verticalOffset = 0;
-                const noseX = shipCenterX; const noseY = shipCenterY - shipHeight / 2 - verticalOffset; // (32, -2)
-                const leftWingX = shipCenterX - shipWidth / 2; const leftWingY = shipCenterY + shipHeight / 2 - verticalOffset; // (11, 58)
-                const rightWingX = shipCenterX + shipWidth / 2; const rightWingY = shipCenterY + shipHeight / 2 - verticalOffset; // (53, 58)
-                const tailIndentX = shipCenterX; const tailIndentY = shipCenterY + shipHeight / 4 - verticalOffset; // (32, 43)
+                const verticalOffset = 0; // Keep user's preference
+                const noseX = shipCenterX; const noseY = shipCenterY - shipHeight / 2 - verticalOffset;
+                const leftWingX = shipCenterX - shipWidth / 2; const leftWingY = shipCenterY + shipHeight / 2 - verticalOffset;
+                const rightWingX = shipCenterX + shipWidth / 2; const rightWingY = shipCenterY + shipHeight / 2 - verticalOffset;
+                const tailIndentX = shipCenterX; const tailIndentY = shipCenterY + shipHeight / 4 - verticalOffset;
                 shipGraphics.fillStyle(shipColor, 1); shipGraphics.beginPath(); shipGraphics.moveTo(noseX, noseY); shipGraphics.lineTo(leftWingX, leftWingY); shipGraphics.lineTo(tailIndentX, tailIndentY); shipGraphics.lineTo(rightWingX, rightWingY); shipGraphics.closePath(); shipGraphics.fillPath(); shipGraphics.generateTexture("ship", shipTexWidth, shipTexHeight); shipGraphics.destroy();
-                console.log("Ship texture generated (64x64 - Filled 4-Point Visual - Offset 4)");
+                console.log("Ship texture generated (64x64 - Filled 4-Point Visual - Offset 0)");
 
                 // --- Create Tile Texture Dynamically (32x32) ---
                 const tileGraphics = this.add.graphics(); tileGraphics.fillStyle(0x00ff00, 1); tileGraphics.fillRect(0, 0, 32, 32); tileGraphics.generateTexture('collisionTile', 32, 32); tileGraphics.destroy();
                 console.log("Collision tile texture generated (32x32 green square for index 1)");
             }
 
-            create() {
-                // --- Define Map Properties ---
-                // (Code remains the same)
-                const mapWidthInTiles = 40; const mapHeightInTiles = 32; const tileWidth = 32; const tileHeight = 32;
-                const mapPixelWidth = mapWidthInTiles * tileWidth; const mapPixelHeight = mapHeightInTiles * tileHeight;
+            // --- Map Generation Function (from PNG) ---
+            // (Code remains the same, but won't be called unless 'mapPNG' exists)
+            generateMapDataFromPNG(textureKey) {
+                console.log(`Generating map from texture: ${textureKey}`);
+                const mapTexture = this.textures.get(textureKey);
+                const imgSource = mapTexture.getSourceImage();
+                const imgWidth = imgSource.width;
+                const imgHeight = imgSource.height;
+                if (imgWidth === 0 || imgHeight === 0) { console.error("Map texture has zero dimensions!"); return false; }
+                console.log(`Map image dimensions: ${imgWidth}x${imgHeight} pixels.`);
+                const tileWidth = 32; const tileHeight = 32; this.mapWidthInTiles = imgWidth; this.mapHeightInTiles = imgHeight; this.mapPixelWidth = this.mapWidthInTiles * tileWidth; this.mapPixelHeight = this.mapHeightInTiles * tileHeight;
+                const tempCanvas = document.createElement('canvas'); tempCanvas.width = imgWidth; tempCanvas.height = imgHeight; const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true }); tempCtx.drawImage(imgSource, 0, 0); let imageData; try { imageData = tempCtx.getImageData(0, 0, imgWidth, imgHeight); } catch (e) { console.error("Could not get ImageData from map texture. Possible CORS issue.", e); return false; } const pixels = imageData.data; this.tilemapData = [];
+                for (let y = 0; y < imgHeight; y++) { const row = []; for (let x = 0; x < imgWidth; x++) { const pixelIndex = (y * imgWidth + x) * 4; const r = pixels[pixelIndex]; const g = pixels[pixelIndex + 1]; const b = pixels[pixelIndex + 2]; let tileIndex = 1; if (r === 0 && g === 0 && b === 0) { tileIndex = 0; } row.push(tileIndex); } this.tilemapData.push(row); }
+                console.log(`Generated ${this.mapWidthInTiles}x${this.mapHeightInTiles} tilemap data from PNG.`);
+                return true;
+            }
 
-                // --- Generate Tilemap Data Programmatically ---
-                // (Code remains the same)
-                const tilemapData = []; const borderThickness = 2;
-                for (let y = 0; y < mapHeightInTiles; y++) { const row = []; for (let x = 0; x < mapWidthInTiles; x++) { if (x < borderThickness || x >= mapWidthInTiles - borderThickness || y < borderThickness || y >= mapHeightInTiles - borderThickness) { row.push(0); } else { row.push(1); } } tilemapData.push(row); }
-                const innerMapStartX = borderThickness; const innerMapEndX = mapWidthInTiles - borderThickness; const innerMapStartY = borderThickness; const innerMapEndY = mapHeightInTiles - borderThickness; let placedObstacles = 0; const maxPlacementAttempts = 100; const placeObstacle = (tileX, tileY, width = 1, height = 1) => { if (tileX < innerMapStartX || tileX + width > innerMapEndX || tileY < innerMapStartY || tileY + height > innerMapEndY) { return false; } for (let y = tileY; y < tileY + height; y++) { for (let x = tileX; x < tileX + width; x++) { if (tilemapData[y][x] !== 1) { return false; } } } for (let y = tileY; y < tileY + height; y++) { for (let x = tileX; x < tileX + width; x++) { tilemapData[y][x] = 0; } } return true; };
+            // --- Map Generation Function (Procedural Fallback) ---
+            // (Code remains the same)
+            generateMapDataProcedurally() {
+                console.log("Generating procedural map data (fallback)...");
+                this.mapWidthInTiles = 40; this.mapHeightInTiles = 32; const tileWidth = 32; const tileHeight = 32; this.mapPixelWidth = this.mapWidthInTiles * tileWidth; this.mapPixelHeight = this.mapHeightInTiles * tileHeight;
+                this.tilemapData = []; const borderThickness = 2;
+                for (let y = 0; y < this.mapHeightInTiles; y++) { const row = []; for (let x = 0; x < this.mapWidthInTiles; x++) { if (x < borderThickness || x >= this.mapWidthInTiles - borderThickness || y < borderThickness || y >= this.mapHeightInTiles - borderThickness) { row.push(0); } else { row.push(1); } } this.tilemapData.push(row); }
+                const innerMapStartX = borderThickness; const innerMapEndX = this.mapWidthInTiles - borderThickness; const innerMapStartY = borderThickness; const innerMapEndY = this.mapHeightInTiles - borderThickness; let placedObstacles = 0; const maxPlacementAttempts = 100; const placeObstacle = (tileX, tileY, width = 1, height = 1) => { if (tileX < innerMapStartX || tileX + width > innerMapEndX || tileY < innerMapStartY || tileY + height > innerMapEndY) { return false; } for (let y = tileY; y < tileY + height; y++) { for (let x = tileX; x < tileX + width; x++) { if (this.tilemapData[y][x] !== 1) { return false; } } } for (let y = tileY; y < tileY + height; y++) { for (let x = tileX; x < tileX + width; x++) { this.tilemapData[y][x] = 0; } } return true; };
                 placedObstacles = 0; for (let i = 0; i < maxPlacementAttempts && placedObstacles < 5; i++) { let randX = Phaser.Math.Between(innerMapStartX, innerMapEndX - 1); let randY = Phaser.Math.Between(innerMapStartY, innerMapEndY - 1); if (placeObstacle(randX, randY, 1, 1)) { placedObstacles++; } } console.log(`Placed ${placedObstacles} 1x1 obstacles.`);
                 placedObstacles = 0; for (let i = 0; i < maxPlacementAttempts && placedObstacles < 5; i++) { let randX = Phaser.Math.Between(innerMapStartX, innerMapEndX - 2); let randY = Phaser.Math.Between(innerMapStartY, innerMapEndY - 1); if (placeObstacle(randX, randY, 2, 1)) { placedObstacles++; } } console.log(`Placed ${placedObstacles} 2x1 obstacles.`);
                 placedObstacles = 0; for (let i = 0; i < maxPlacementAttempts && placedObstacles < 5; i++) { let randX = Phaser.Math.Between(innerMapStartX, innerMapEndX - 1); let randY = Phaser.Math.Between(innerMapStartY, innerMapEndY - 2); if (placeObstacle(randX, randY, 1, 2)) { placedObstacles++; } } console.log(`Placed ${placedObstacles} 1x2 obstacles.`);
-                console.log("Tilemap data generated (0=border/obstacle, 1=inside).");
+                console.log("Procedural tilemap data generated (0=border/obstacle, 1=inside).");
+                return true;
+            }
 
-                // --- Create the Phaser Tilemap ---
+
+            create() {
+                // --- Generate Map Data (Try PNG, then Fallback) ---
+                let mapGenerated = false;
+                // Check if texture exists (it won't if loading was commented out or failed)
+                if (this.textures.exists('mapPNG')) {
+                    mapGenerated = this.generateMapDataFromPNG('mapPNG');
+                }
+
+                if (!mapGenerated) {
+                    // Fallback if PNG failed to load or process
+                    console.warn("Texture 'mapPNG' not found or processing failed, using procedural fallback.");
+                    mapGenerated = this.generateMapDataProcedurally();
+                }
+
+                if (!mapGenerated || !this.tilemapData) {
+                    // Serious error if neither map generation worked
+                    this.add.text(50, 50, 'Error: Could not generate map data!', { color: '#ff0000', fontSize: '20px' });
+                    return; // Stop creation
+                }
+
+                // --- Create the Phaser Tilemap (Using generated data) ---
                 // (Code remains the same)
-                this.map = this.make.tilemap({ data: tilemapData, tileWidth: tileWidth, tileHeight: tileHeight });
+                const tileWidth = 32; const tileHeight = 32;
+                this.map = this.make.tilemap({ data: this.tilemapData, tileWidth: tileWidth, tileHeight: tileHeight });
                 const tileset = this.map.addTilesetImage('collisionTile', 'collisionTile', tileWidth, tileHeight, 0, 0);
                 this.visualLayer = this.map.createLayer(0, tileset, 0, 0);
                 console.log("Visual tilemap layer created.");
@@ -86,52 +127,16 @@
 
 
                 // --- Create Player with Matter.js ---
-                const playerStartX = mapPixelWidth / 2; const playerStartY = mapPixelHeight / 2;
-
-                // **FIX:** Define vertices relative to center (0,0) for the 4-POINT collision shape
-                // matching the visual drawing (verticalOffset = 4, shipHeight = 60)
-                // Nose Y: -30 - 4 = -34
-                // Wing Y: 30 - 4 = 26
-                // Wing X: +/- 21
-                // Indent Y: 15 - 4 = 11 (relative to center Y=0)
-                const shipVertices = '0 -34 -23 26 0 11 23 26'; // 4-point shape
-                const Matter = Phaser.Physics.Matter.Matter;
-                let parsedVerts = Matter.Vertices.fromPath(shipVertices);
-
-                // Keep vertex re-centering REMOVED
-                console.log("Using original parsed 4-point vertices (no re-centering).");
-
-                // Create the custom Matter Body using the 4-point vertices
-                // Matter will decompose this concave shape internally
-                const shipBody = Matter.Bodies.fromVertices(
-                    playerStartX, playerStartY,
-                    parsedVerts, // Use original parsed 4-point verts
-                    { // Options for the Matter Body
-                        label: 'player-body',
-                        frictionAir: 0.01,
-                        restitution: 0.5,
-                        density: 0.001,
-                        collisionFilter: { category: 0x0001, mask: 0x0002 }
-                    }
-                    // Let Matter handle convexity detection
-                );
-
-                 // Create the sprite (uses the 4-point visual texture)
-                this.player = this.matter.add.sprite(playerStartX, playerStartY, 'ship', null, { label: 'player' });
-
-                // Assign the custom 4-point body to the sprite
-                this.player.setExistingBody(shipBody);
-                // Use the adjusted origin found previously by user
-                this.player.setOrigin(0.5, 0.58); // Keep the origin that seemed closer
-
-                console.log("Player sprite created with 4-point Matter body.");
+                // (Code remains the same - using user's preferred settings)
+                const playerStartX = this.mapPixelWidth / 2; const playerStartY = this.mapPixelHeight / 2;
+                const shipVertices = '0 -30 -24 26 24 26'; // Corresponds to offset 0, width factor 0.8
+                const Matter = Phaser.Physics.Matter.Matter; let parsedVerts = Matter.Vertices.fromPath(shipVertices); console.log("Using original parsed vertices (no re-centering)."); const shipBody = Matter.Bodies.fromVertices(playerStartX, playerStartY, parsedVerts, { label: 'player-body', frictionAir: 0.01, restitution: 0.5, density: 0.001, collisionFilter: { category: 0x0001, mask: 0x0002 } }, true); this.player = this.matter.add.sprite(playerStartX, playerStartY, 'ship', null, { label: 'player' }); this.player.setExistingBody(shipBody); this.player.setOrigin(0.5, 0.58); console.log("Player sprite created.");
 
 
-                // --- Setup Collisions (Matter handles physics, listeners are optional) ---
-                // (No explicit collider needed here)
+                // --- Setup Collisions (Matter handles physics) ---
 
 
-                 // Add text to confirm scene is running
+                // Add text to confirm scene is running
                 this.add.text(10, 10, 'PlayScene Active - Matter.js', { fontSize: '16px', fill: '#fff' }).setScrollFactor(0);
 
                 // --- Initialize Keyboard Input ---
@@ -139,54 +144,41 @@
                 console.log("Cursor keys initialized.");
 
                 // --- Initialize Touch Controls ---
-                this.debugGraphics = this.add.graphics().setScrollFactor(0).setDepth(5).setAlpha(0.25); // Use lower alpha
+                this.debugGraphics = this.add.graphics().setScrollFactor(0).setDepth(5).setAlpha(0.4);
                 this.setupTouchControls();
-                this.scale.on('orientationchange', this.updateTouchZonesLayout, this);
+                this.scale.on('resize', this.handleResize, this);
 
 
                 // --- Camera & World Bounds ---
                 // (Code remains the same)
-                this.cameras.main.setBounds(0, 0, mapPixelWidth, mapPixelHeight);
-                this.matter.world.setBounds(0, 0, mapPixelWidth, mapPixelHeight);
+                this.cameras.main.setBounds(0, 0, this.mapPixelWidth, this.mapPixelHeight);
+                this.matter.world.setBounds(0, 0, this.mapPixelWidth, this.mapPixelHeight);
                 this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-                console.log(`Camera and world bounds set to ${mapPixelWidth}x${mapPixelHeight}.`);
+                console.log(`Camera and world bounds set to ${this.mapPixelWidth}x${this.mapPixelHeight}.`);
 
             } // End create()
 
-            // --- Touch Control Setup & Layout Update ---
-            updateTouchZonesLayout() {
-                const cam = this.cameras.main;
-                const width = cam.width;
-                const height = cam.height;
-                const isLandscape = this.scale.isLandscape;
-                console.log(`Updating touch zones for ${isLandscape ? 'Landscape' : 'Portrait'} (${width}x${height})`);
+            // --- Handle Resize ---
+            // (Code remains the same)
+            handleResize(gameSize, baseSize, displaySize, resolution) { console.log("Resize event detected", gameSize.width, gameSize.height); if (this.cameras.main) { this.updateTouchZonesLayout(gameSize.width, gameSize.height); } }
 
-                // Define zones
-                this.zoneRotate = new Phaser.Geom.Rectangle(0, height / 2, width / 2, height / 2);
-                this.zoneThrust = new Phaser.Geom.Rectangle(width / 2, height / 2, width / 2, height / 2);
-
-                // --- Redraw Debug Zones ---
-                this.debugGraphics.clear(); // Clear previous drawings
-                // **FIX:** Uncommented drawing lines & adjusted style
-                this.debugGraphics.lineStyle(2, 0x00ff00, 0.4); // Semi-transparent Green for rotate zone
-                this.debugGraphics.strokeRectShape(this.zoneRotate);
-                this.debugGraphics.lineStyle(2, 0xff0000, 0.4); // Semi-transparent Red for thrust zone
-                this.debugGraphics.strokeRectShape(this.zoneThrust);
-                // --- End Redraw ---
-            }
-            // (setupTouchControls and handlers remain the same)
-            setupTouchControls() { this.updateTouchZonesLayout(); if (!this.input.listeners('pointerdown').length) { this.input.on('pointerdown', this.handlePointerDown, this); this.input.on('pointermove', this.handlePointerMove, this); this.input.on('pointerup', this.handlePointerUp, this); this.input.on('gameout', () => { if (this.touchRotatePointer) this.handlePointerUp(this.touchRotatePointer); if (this.touchThrustPointer) this.handlePointerUp(this.touchThrustPointer); }, this); console.log("Touch event listeners initialized."); } }
+            // --- Touch Control Setup & Handlers ---
+            // (Code remains the same as before)
+            updateTouchZonesLayout(width, height) { width = width || this.cameras.main.width; height = height || this.cameras.main.height; console.log(`Updating touch zones for (${width}x${height})`); this.zoneRotate = new Phaser.Geom.Rectangle(0, height / 2, width / 2, height / 2); this.zoneThrust = new Phaser.Geom.Rectangle(width / 2, height / 2, width / 2, height / 2); this.debugGraphics.clear(); this.debugGraphics.lineStyle(2, 0x00ff00, 0.4); this.debugGraphics.strokeRectShape(this.zoneRotate); this.debugGraphics.lineStyle(2, 0xff0000, 0.4); this.debugGraphics.strokeRectShape(this.zoneThrust); }
+            setupTouchControls() { this.updateTouchZonesLayout(this.scale.width, this.scale.height); if (!this.input.listeners('pointerdown').length) { this.input.on('pointerdown', this.handlePointerDown, this); this.input.on('pointermove', this.handlePointerMove, this); this.input.on('pointerup', this.handlePointerUp, this); this.input.on('gameout', () => { if (this.touchRotatePointer) this.handlePointerUp(this.touchRotatePointer); if (this.touchThrustPointer) this.handlePointerUp(this.touchThrustPointer); }, this); console.log("Touch event listeners initialized."); } }
             handlePointerDown(pointer) { if (!this.zoneRotate || !this.zoneThrust) return; const x = pointer.x; const y = pointer.y; if (Phaser.Geom.Rectangle.Contains(this.zoneRotate, x, y)) { if (this.touchRotatePointer === null) { this.touchRotatePointer = pointer; this.touchRotateStartX = x; } } else if (Phaser.Geom.Rectangle.Contains(this.zoneThrust, x, y)) { if (this.touchThrustPointer === null) { this.touchThrustPointer = pointer; this.touchThrusting = true; } } }
             handlePointerMove(pointer) { if (this.touchRotatePointer && pointer.id === this.touchRotatePointer.id) { const deltaX = pointer.x - this.touchRotateStartX; const deadZone = 4; if (deltaX < -deadZone) { this.touchRotatingLeft = true; this.touchRotatingRight = false; } else if (deltaX > deadZone) { this.touchRotatingRight = true; this.touchRotatingLeft = false; } else { this.touchRotatingLeft = false; this.touchRotatingRight = false; } } }
             handlePointerUp(pointer) { if (this.touchRotatePointer && pointer.id === this.touchRotatePointer.id) { this.touchRotatePointer = null; this.touchRotatingLeft = false; this.touchRotatingRight = false; this.touchRotateStartX = 0; } if (this.touchThrustPointer && pointer.id === this.touchThrustPointer.id) { this.touchThrustPointer = null; this.touchThrusting = false; } }
 
 
             update(time, delta) {
-                // (Update logic remains the same)
+                // (Update logic remains the same - using user's thrust value)
                 if (!this.player || !this.cursors) return; const body = this.player.body;
                 if (this.touchThrustPointer && !this.touchThrustPointer.isDown) { this.handlePointerUp(this.touchThrustPointer); } if (this.touchRotatePointer && !this.touchRotatePointer.isDown) { this.handlePointerUp(this.touchRotatePointer); } else if (this.touchRotatePointer && this.touchRotatePointer.isDown) { this.handlePointerMove(this.touchRotatePointer); }
                 let shouldRotateLeft = this.cursors.left.isDown || this.touchRotatingLeft; let shouldRotateRight = this.cursors.right.isDown || this.touchRotatingRight; let shouldThrust = this.cursors.up.isDown || this.touchThrusting;
-                const rotationRate = 0.04; const thrustMagnitude = 0.0004;
+                const rotationRate = 0.08;
+                // Keep user's thrust value
+                const thrustMagnitude = 0.001; // User requested value
                 const angularDamping = 0.80;
                 if (shouldRotateLeft) { this.player.setAngularVelocity(-rotationRate); }
                 else if (shouldRotateRight) { this.player.setAngularVelocity(rotationRate); }
@@ -199,31 +191,13 @@
         } // End of PlayScene Class
 
         // --- Phaser Game Configuration ---
-        const config = {
-            type: Phaser.AUTO,
-            // **FIX:** Set width/height to 100%
-            width: '100%',
-            height: '100%',
-            scale: {
-                // **FIX:** Use RESIZE mode
-                mode: Phaser.Scale.RESIZE,
-                // autoCenter: Phaser.Scale.CENTER_BOTH // Not needed for RESIZE
-            },
-            physics: {
-                default: 'matter',
-                matter: {
-                    // **USER CHANGE:** Keep user's gravity value
-                    gravity: { y: 0.16 }, // User requested value
-                    debug: true,
-                    debugBodyColor: 0xffffff
-                }
-            },
-            scene: PlayScene,
-            backgroundColor: '#222222'
-        };
+        // Keep user's gravity value
+        const config = { type: Phaser.AUTO, width: '100%', height: '100%', scale: { mode: Phaser.Scale.RESIZE, }, physics: { default: 'matter', matter: { gravity: { y: 0.32 }, debug: true, debugBodyColor: 0xffffff } }, scene: PlayScene, backgroundColor: '#222222' };
+
         // --- Create Phaser Game Instance ---
         const game = new Phaser.Game(config);
 
     </script>
 </body>
+
 </html>
