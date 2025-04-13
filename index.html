@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Phaser Ship - User Parameter Tuning</title>
+    <title>Phaser Ship - 4-Point Physics Shape & Visible Zones</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
         body { margin: 0; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
@@ -29,37 +29,18 @@
 
             preload() {
                 // --- Create Ship Texture Dynamically ---
+                // Visual uses 4 points, offset 4
                 const shipGraphics = this.add.graphics();
                 const shipColor = 0xffffff; const shipThickness = 1.5;
-                const shipHeight = 60;
-                // **USER CHANGE:** Set aspect ratio
-                const shipWidth = shipHeight * 0.8; // 48
+                const shipHeight = 60; const shipWidth = shipHeight * 0.8; // 42
                 const shipTexWidth = 64; const shipTexHeight = 64; const shipCenterX = shipTexWidth / 2; const shipCenterY = shipTexHeight / 2; // 32, 32
-                // **USER CHANGE:** Set vertical offset
                 const verticalOffset = 0;
-
-                // Recalculate visual points relative to texture top-left (0,0)
-                const noseX = shipCenterX; // 32
-                const noseY = shipCenterY - shipHeight / 2 - verticalOffset; // 32 - 30 - 0 = 2 -> (32, 2)
-                const leftWingX = shipCenterX - shipWidth / 2; // 32 - 24 = 8
-                const leftWingY = shipCenterY + shipHeight / 2 - verticalOffset; // 32 + 30 - 0 = 62 -> (8, 62)
-                const rightWingX = shipCenterX + shipWidth / 2; // 32 + 24 = 56
-                const rightWingY = shipCenterY + shipHeight / 2 - verticalOffset; // 32 + 30 - 0 = 62 -> (56, 62)
-                const tailIndentX = shipCenterX; // 32
-                const tailIndentY = shipCenterY + shipHeight / 4 - verticalOffset; // 32 + 15 - 0 = 47 -> (32, 47)
-
-                // Draw the 4-point filled shape
-                shipGraphics.fillStyle(shipColor, 1);
-                shipGraphics.beginPath();
-                shipGraphics.moveTo(noseX, noseY);
-                shipGraphics.lineTo(leftWingX, leftWingY);
-                shipGraphics.lineTo(tailIndentX, tailIndentY);
-                shipGraphics.lineTo(rightWingX, rightWingY);
-                shipGraphics.closePath();
-                shipGraphics.fillPath();
-                shipGraphics.generateTexture("ship", shipTexWidth, shipTexHeight);
-                shipGraphics.destroy();
-                console.log("Ship texture generated (64x64 - Filled 4-Point Visual - Offset 0)");
+                const noseX = shipCenterX; const noseY = shipCenterY - shipHeight / 2 - verticalOffset; // (32, -2)
+                const leftWingX = shipCenterX - shipWidth / 2; const leftWingY = shipCenterY + shipHeight / 2 - verticalOffset; // (11, 58)
+                const rightWingX = shipCenterX + shipWidth / 2; const rightWingY = shipCenterY + shipHeight / 2 - verticalOffset; // (53, 58)
+                const tailIndentX = shipCenterX; const tailIndentY = shipCenterY + shipHeight / 4 - verticalOffset; // (32, 43)
+                shipGraphics.fillStyle(shipColor, 1); shipGraphics.beginPath(); shipGraphics.moveTo(noseX, noseY); shipGraphics.lineTo(leftWingX, leftWingY); shipGraphics.lineTo(tailIndentX, tailIndentY); shipGraphics.lineTo(rightWingX, rightWingY); shipGraphics.closePath(); shipGraphics.fillPath(); shipGraphics.generateTexture("ship", shipTexWidth, shipTexHeight); shipGraphics.destroy();
+                console.log("Ship texture generated (64x64 - Filled 4-Point Visual - Offset 4)");
 
                 // --- Create Tile Texture Dynamically (32x32) ---
                 const tileGraphics = this.add.graphics(); tileGraphics.fillStyle(0x00ff00, 1); tileGraphics.fillRect(0, 0, 32, 32); tileGraphics.generateTexture('collisionTile', 32, 32); tileGraphics.destroy();
@@ -97,41 +78,43 @@
                 // --- Create Player with Matter.js ---
                 const playerStartX = mapPixelWidth / 2; const playerStartY = mapPixelHeight / 2;
 
-                // **FIX:** Define vertices relative to center (0,0) for the TRIANGLE collision shape
-                // using dimensions corresponding to verticalOffset = 0 (shipHeight=60, shipWidth=48)
-                // Nose Y: -shipHeight/2 = -30
-                // Wing Y: +shipHeight/2 = 30
-                // Wing X: +/- shipWidth/2 = +/- 24
-                const shipVertices = '0 -30 -24 30 24 30'; // Centered triangle vertices for new aspect ratio
+                // **FIX:** Define vertices relative to center (0,0) for the 4-POINT collision shape
+                // matching the visual drawing (verticalOffset = 4, shipHeight = 60)
+                // Nose Y: -30 - 4 = -34
+                // Wing Y: 30 - 4 = 26
+                // Wing X: +/- 21
+                // Indent Y: 15 - 4 = 11 (relative to center Y=0)
+                const shipVertices = '0 -34 -23 26 0 11 23 26'; // 4-point shape
                 const Matter = Phaser.Physics.Matter.Matter;
                 let parsedVerts = Matter.Vertices.fromPath(shipVertices);
 
-                // Keep vertex re-centering REMOVED as requested by user previously
-                console.log("Using original parsed vertices (no re-centering).");
+                // Keep vertex re-centering REMOVED
+                console.log("Using original parsed 4-point vertices (no re-centering).");
 
-                // Create the custom Matter Body using the original parsed vertices
+                // Create the custom Matter Body using the 4-point vertices
+                // Matter will decompose this concave shape internally
                 const shipBody = Matter.Bodies.fromVertices(
                     playerStartX, playerStartY,
-                    parsedVerts, // Use original parsed verts
+                    parsedVerts, // Use original parsed 4-point verts
                     { // Options for the Matter Body
                         label: 'player-body',
                         frictionAir: 0.01,
                         restitution: 0.5,
                         density: 0.001,
                         collisionFilter: { category: 0x0001, mask: 0x0002 }
-                    },
-                    true
+                    }
+                    // Let Matter handle convexity detection
                 );
 
-                 // Create the sprite (uses the centered 4-point visual texture)
+                 // Create the sprite (uses the 4-point visual texture)
                 this.player = this.matter.add.sprite(playerStartX, playerStartY, 'ship', null, { label: 'player' });
 
-                // Assign the custom body to the sprite
+                // Assign the custom 4-point body to the sprite
                 this.player.setExistingBody(shipBody);
+                // Use the adjusted origin found previously by user
+                this.player.setOrigin(0.5, 0.58); // Keep the origin that seemed closer
 
-                // **USER CHANGE:** Set sprite origin
-                this.player.setOrigin(0.5, 0.58);
-                console.log("Player sprite origin set to (0.5, 0.58).");
+                console.log("Player sprite created with 4-point Matter body.");
 
 
                 // --- Setup Collisions (Matter handles physics, listeners are optional) ---
@@ -146,7 +129,7 @@
                 console.log("Cursor keys initialized.");
 
                 // --- Initialize Touch Controls ---
-                this.debugGraphics = this.add.graphics().setScrollFactor(0).setDepth(5).setAlpha(0.25);
+                this.debugGraphics = this.add.graphics().setScrollFactor(0).setDepth(5).setAlpha(0.25); // Use lower alpha
                 this.setupTouchControls();
                 this.scale.on('orientationchange', this.updateTouchZonesLayout, this);
 
@@ -160,9 +143,28 @@
 
             } // End create()
 
-            // --- Touch Control Setup & Handlers ---
-            // (Code remains the same as before)
-            updateTouchZonesLayout() { const cam = this.cameras.main; const width = cam.width; const height = cam.height; const isLandscape = this.scale.isLandscape; console.log(`Updating touch zones for ${isLandscape ? 'Landscape' : 'Portrait'} (${width}x${height})`); this.zoneRotate = new Phaser.Geom.Rectangle(0, height / 2, width / 2, height / 2); this.zoneThrust = new Phaser.Geom.Rectangle(width / 2, height / 2, width / 2, height / 2); this.debugGraphics.clear(); this.debugGraphics.lineStyle(2, 0x00ff00, 0.4); this.debugGraphics.strokeRectShape(this.zoneRotate); this.debugGraphics.lineStyle(2, 0xff0000, 0.4); this.debugGraphics.strokeRectShape(this.zoneThrust); }
+            // --- Touch Control Setup & Layout Update ---
+            updateTouchZonesLayout() {
+                const cam = this.cameras.main;
+                const width = cam.width;
+                const height = cam.height;
+                const isLandscape = this.scale.isLandscape;
+                console.log(`Updating touch zones for ${isLandscape ? 'Landscape' : 'Portrait'} (${width}x${height})`);
+
+                // Define zones
+                this.zoneRotate = new Phaser.Geom.Rectangle(0, height / 2, width / 2, height / 2);
+                this.zoneThrust = new Phaser.Geom.Rectangle(width / 2, height / 2, width / 2, height / 2);
+
+                // --- Redraw Debug Zones ---
+                this.debugGraphics.clear(); // Clear previous drawings
+                // **FIX:** Uncommented drawing lines & adjusted style
+                this.debugGraphics.lineStyle(2, 0x00ff00, 0.4); // Semi-transparent Green for rotate zone
+                this.debugGraphics.strokeRectShape(this.zoneRotate);
+                this.debugGraphics.lineStyle(2, 0xff0000, 0.4); // Semi-transparent Red for thrust zone
+                this.debugGraphics.strokeRectShape(this.zoneThrust);
+                // --- End Redraw ---
+            }
+            // (setupTouchControls and handlers remain the same)
             setupTouchControls() { this.updateTouchZonesLayout(); if (!this.input.listeners('pointerdown').length) { this.input.on('pointerdown', this.handlePointerDown, this); this.input.on('pointermove', this.handlePointerMove, this); this.input.on('pointerup', this.handlePointerUp, this); this.input.on('gameout', () => { if (this.touchRotatePointer) this.handlePointerUp(this.touchRotatePointer); if (this.touchThrustPointer) this.handlePointerUp(this.touchThrustPointer); }, this); console.log("Touch event listeners initialized."); } }
             handlePointerDown(pointer) { if (!this.zoneRotate || !this.zoneThrust) return; const x = pointer.x; const y = pointer.y; if (Phaser.Geom.Rectangle.Contains(this.zoneRotate, x, y)) { if (this.touchRotatePointer === null) { this.touchRotatePointer = pointer; this.touchRotateStartX = x; } } else if (Phaser.Geom.Rectangle.Contains(this.zoneThrust, x, y)) { if (this.touchThrustPointer === null) { this.touchThrustPointer = pointer; this.touchThrusting = true; } } }
             handlePointerMove(pointer) { if (this.touchRotatePointer && pointer.id === this.touchRotatePointer.id) { const deltaX = pointer.x - this.touchRotateStartX; const deadZone = 4; if (deltaX < -deadZone) { this.touchRotatingLeft = true; this.touchRotatingRight = false; } else if (deltaX > deadZone) { this.touchRotatingRight = true; this.touchRotatingLeft = false; } else { this.touchRotatingLeft = false; this.touchRotatingRight = false; } } }
@@ -174,11 +176,8 @@
                 if (!this.player || !this.cursors) return; const body = this.player.body;
                 if (this.touchThrustPointer && !this.touchThrustPointer.isDown) { this.handlePointerUp(this.touchThrustPointer); } if (this.touchRotatePointer && !this.touchRotatePointer.isDown) { this.handlePointerUp(this.touchRotatePointer); } else if (this.touchRotatePointer && this.touchRotatePointer.isDown) { this.handlePointerMove(this.touchRotatePointer); }
                 let shouldRotateLeft = this.cursors.left.isDown || this.touchRotatingLeft; let shouldRotateRight = this.cursors.right.isDown || this.touchRotatingRight; let shouldThrust = this.cursors.up.isDown || this.touchThrusting;
-
-                // **USER CHANGE:** Adjusted thrust magnitude
-                const rotationRate = 0.08; const thrustMagnitude = 0.001; // Was 0.0016
+                const rotationRate = 0.04; const thrustMagnitude = 0.0004;
                 const angularDamping = 0.80;
-
                 if (shouldRotateLeft) { this.player.setAngularVelocity(-rotationRate); }
                 else if (shouldRotateRight) { this.player.setAngularVelocity(rotationRate); }
                 else { this.player.setAngularVelocity(this.player.body.angularVelocity * angularDamping); }
@@ -190,26 +189,8 @@
         } // End of PlayScene Class
 
         // --- Phaser Game Configuration ---
-        const config = {
-            type: Phaser.AUTO,
-            width: 800,
-            height: 600,
-            scale: {
-                mode: Phaser.Scale.FIT,
-                autoCenter: Phaser.Scale.CENTER_BOTH
-            },
-            physics: {
-                default: 'matter',
-                matter: {
-                    // **USER CHANGE:** Adjusted gravity
-                    gravity: { y: 0.32 }, // Was 0.5
-                    debug: true,
-                    debugBodyColor: 0xffffff
-                }
-            },
-            scene: PlayScene,
-            backgroundColor: '#222222'
-        };
+        // (Config remains the same)
+        const config = { type: Phaser.AUTO, width: 800, height: 600, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, physics: { default: 'matter', matter: { gravity: { y: 0.16 }, debug: true, debugBodyColor: 0xffffff } }, scene: PlayScene, backgroundColor: '#222222' };
 
         // --- Create Phaser Game Instance ---
         const game = new Phaser.Game(config);
