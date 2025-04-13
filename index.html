@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Phaser Ship - User Parameter Tuning</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; background-color: #222; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        canvas { border: 1px solid #fff; }
+    </style>
+</head>
+<body>
+    <script>
+        // --- Play Scene Definition ---
+        class PlayScene extends Phaser.Scene {
+            constructor() {
+                super("PlayScene"); // Scene key
+                this.player = null;
+                this.cursors = null;
+                this.visualLayer = null; // Renamed layer for clarity
+                this.map = null;
+
+                // --- Touch Control Properties ---
+                this.zoneRotate = null; this.zoneThrust = null; this.touchRotatePointer = null;
+                this.touchRotateStartX = 0; this.touchThrustPointer = null; this.touchRotatingLeft = false;
+                this.touchRotatingRight = false; this.touchThrusting = false; this.debugGraphics = null;
+            }
+
+            preload() {
+                // --- Create Ship Texture Dynamically ---
+                const shipGraphics = this.add.graphics();
+                const shipColor = 0xffffff; const shipThickness = 1.5;
+                const shipHeight = 60;
+                // **USER CHANGE:** Set aspect ratio
+                const shipWidth = shipHeight * 0.8; // 48
+                const shipTexWidth = 64; const shipTexHeight = 64; const shipCenterX = shipTexWidth / 2; const shipCenterY = shipTexHeight / 2; // 32, 32
+                // **USER CHANGE:** Set vertical offset
+                const verticalOffset = 0;
+
+                // Recalculate visual points relative to texture top-left (0,0)
+                const noseX = shipCenterX; // 32
+                const noseY = shipCenterY - shipHeight / 2 - verticalOffset; // 32 - 30 - 0 = 2 -> (32, 2)
+                const leftWingX = shipCenterX - shipWidth / 2; // 32 - 24 = 8
+                const leftWingY = shipCenterY + shipHeight / 2 - verticalOffset; // 32 + 30 - 0 = 62 -> (8, 62)
+                const rightWingX = shipCenterX + shipWidth / 2; // 32 + 24 = 56
+                const rightWingY = shipCenterY + shipHeight / 2 - verticalOffset; // 32 + 30 - 0 = 62 -> (56, 62)
+                const tailIndentX = shipCenterX; // 32
+                const tailIndentY = shipCenterY + shipHeight / 4 - verticalOffset; // 32 + 15 - 0 = 47 -> (32, 47)
+
+                // Draw the 4-point filled shape
+                shipGraphics.fillStyle(shipColor, 1);
+                shipGraphics.beginPath();
+                shipGraphics.moveTo(noseX, noseY);
+                shipGraphics.lineTo(leftWingX, leftWingY);
+                shipGraphics.lineTo(tailIndentX, tailIndentY);
+                shipGraphics.lineTo(rightWingX, rightWingY);
+                shipGraphics.closePath();
+                shipGraphics.fillPath();
+                shipGraphics.generateTexture("ship", shipTexWidth, shipTexHeight);
+                shipGraphics.destroy();
+                console.log("Ship texture generated (64x64 - Filled 4-Point Visual - Offset 0)");
+
+                // --- Create Tile Texture Dynamically (32x32) ---
+                const tileGraphics = this.add.graphics(); tileGraphics.fillStyle(0x00ff00, 1); tileGraphics.fillRect(0, 0, 32, 32); tileGraphics.generateTexture('collisionTile', 32, 32); tileGraphics.destroy();
+                console.log("Collision tile texture generated (32x32 green square for index 1)");
+            }
+
+            create() {
+                // --- Define Map Properties ---
+                // (Code remains the same)
+                const mapWidthInTiles = 40; const mapHeightInTiles = 32; const tileWidth = 32; const tileHeight = 32;
+                const mapPixelWidth = mapWidthInTiles * tileWidth; const mapPixelHeight = mapHeightInTiles * tileHeight;
+
+                // --- Generate Tilemap Data Programmatically ---
+                // (Code remains the same)
+                const tilemapData = []; const borderThickness = 2;
+                for (let y = 0; y < mapHeightInTiles; y++) { const row = []; for (let x = 0; x < mapWidthInTiles; x++) { if (x < borderThickness || x >= mapWidthInTiles - borderThickness || y < borderThickness || y >= mapHeightInTiles - borderThickness) { row.push(0); } else { row.push(1); } } tilemapData.push(row); }
+                const innerMapStartX = borderThickness; const innerMapEndX = mapWidthInTiles - borderThickness; const innerMapStartY = borderThickness; const innerMapEndY = mapHeightInTiles - borderThickness; let placedObstacles = 0; const maxPlacementAttempts = 100; const placeObstacle = (tileX, tileY, width = 1, height = 1) => { if (tileX < innerMapStartX || tileX + width > innerMapEndX || tileY < innerMapStartY || tileY + height > innerMapEndY) { return false; } for (let y = tileY; y < tileY + height; y++) { for (let x = tileX; x < tileX + width; x++) { if (tilemapData[y][x] !== 1) { return false; } } } for (let y = tileY; y < tileY + height; y++) { for (let x = tileX; x < tileX + width; x++) { tilemapData[y][x] = 0; } } return true; };
+                placedObstacles = 0; for (let i = 0; i < maxPlacementAttempts && placedObstacles < 5; i++) { let randX = Phaser.Math.Between(innerMapStartX, innerMapEndX - 1); let randY = Phaser.Math.Between(innerMapStartY, innerMapEndY - 1); if (placeObstacle(randX, randY, 1, 1)) { placedObstacles++; } } console.log(`Placed ${placedObstacles} 1x1 obstacles.`);
+                placedObstacles = 0; for (let i = 0; i < maxPlacementAttempts && placedObstacles < 5; i++) { let randX = Phaser.Math.Between(innerMapStartX, innerMapEndX - 2); let randY = Phaser.Math.Between(innerMapStartY, innerMapEndY - 1); if (placeObstacle(randX, randY, 2, 1)) { placedObstacles++; } } console.log(`Placed ${placedObstacles} 2x1 obstacles.`);
+                placedObstacles = 0; for (let i = 0; i < maxPlacementAttempts && placedObstacles < 5; i++) { let randX = Phaser.Math.Between(innerMapStartX, innerMapEndX - 1); let randY = Phaser.Math.Between(innerMapStartY, innerMapEndY - 2); if (placeObstacle(randX, randY, 1, 2)) { placedObstacles++; } } console.log(`Placed ${placedObstacles} 1x2 obstacles.`);
+                console.log("Tilemap data generated (0=border/obstacle, 1=inside).");
+
+                // --- Create the Phaser Tilemap ---
+                // (Code remains the same)
+                this.map = this.make.tilemap({ data: tilemapData, tileWidth: tileWidth, tileHeight: tileHeight });
+                const tileset = this.map.addTilesetImage('collisionTile', 'collisionTile', tileWidth, tileHeight, 0, 0);
+                this.visualLayer = this.map.createLayer(0, tileset, 0, 0);
+                console.log("Visual tilemap layer created.");
+
+                // --- Convert Tilemap Layer for Matter.js ---
+                // (Code remains the same)
+                if (this.visualLayer) { this.visualLayer.setCollision(0); this.visualLayer.setCollision(1, false); this.matter.world.convertTilemapLayer(this.visualLayer, { label: 'terrain', collisionFilter: { category: 0x0002 } }); console.log("Tilemap layer converted for Matter physics (colliding on index 0)."); } else { console.error("Visual layer not created! Cannot convert for Matter."); }
+
+
+                // --- Create Player with Matter.js ---
+                const playerStartX = mapPixelWidth / 2; const playerStartY = mapPixelHeight / 2;
+
+                // **FIX:** Define vertices relative to center (0,0) for the TRIANGLE collision shape
+                // using dimensions corresponding to verticalOffset = 0 (shipHeight=60, shipWidth=48)
+                // Nose Y: -shipHeight/2 = -30
+                // Wing Y: +shipHeight/2 = 30
+                // Wing X: +/- shipWidth/2 = +/- 24
+                const shipVertices = '0 -30 -24 30 24 30'; // Centered triangle vertices for new aspect ratio
+                const Matter = Phaser.Physics.Matter.Matter;
+                let parsedVerts = Matter.Vertices.fromPath(shipVertices);
+
+                // Keep vertex re-centering REMOVED as requested by user previously
+                console.log("Using original parsed vertices (no re-centering).");
+
+                // Create the custom Matter Body using the original parsed vertices
+                const shipBody = Matter.Bodies.fromVertices(
+                    playerStartX, playerStartY,
+                    parsedVerts, // Use original parsed verts
+                    { // Options for the Matter Body
+                        label: 'player-body',
+                        frictionAir: 0.01,
+                        restitution: 0.5,
+                        density: 0.001,
+                        collisionFilter: { category: 0x0001, mask: 0x0002 }
+                    },
+                    true
+                );
+
+                 // Create the sprite (uses the centered 4-point visual texture)
+                this.player = this.matter.add.sprite(playerStartX, playerStartY, 'ship', null, { label: 'player' });
+
+                // Assign the custom body to the sprite
+                this.player.setExistingBody(shipBody);
+
+                // **USER CHANGE:** Set sprite origin
+                this.player.setOrigin(0.5, 0.58);
+                console.log("Player sprite origin set to (0.5, 0.58).");
+
+
+                // --- Setup Collisions (Matter handles physics, listeners are optional) ---
+                // (No explicit collider needed here)
+
+
+                 // Add text to confirm scene is running
+                this.add.text(10, 10, 'PlayScene Active - Matter.js', { fontSize: '16px', fill: '#fff' }).setScrollFactor(0);
+
+                // --- Initialize Keyboard Input ---
+                this.cursors = this.input.keyboard.createCursorKeys();
+                console.log("Cursor keys initialized.");
+
+                // --- Initialize Touch Controls ---
+                this.debugGraphics = this.add.graphics().setScrollFactor(0).setDepth(5).setAlpha(0.25);
+                this.setupTouchControls();
+                this.scale.on('orientationchange', this.updateTouchZonesLayout, this);
+
+
+                // --- Camera & World Bounds ---
+                // (Code remains the same)
+                this.cameras.main.setBounds(0, 0, mapPixelWidth, mapPixelHeight);
+                this.matter.world.setBounds(0, 0, mapPixelWidth, mapPixelHeight);
+                this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+                console.log(`Camera and world bounds set to ${mapPixelWidth}x${mapPixelHeight}.`);
+
+            } // End create()
+
+            // --- Touch Control Setup & Handlers ---
+            // (Code remains the same as before)
+            updateTouchZonesLayout() { const cam = this.cameras.main; const width = cam.width; const height = cam.height; const isLandscape = this.scale.isLandscape; console.log(`Updating touch zones for ${isLandscape ? 'Landscape' : 'Portrait'} (${width}x${height})`); this.zoneRotate = new Phaser.Geom.Rectangle(0, height / 2, width / 2, height / 2); this.zoneThrust = new Phaser.Geom.Rectangle(width / 2, height / 2, width / 2, height / 2); this.debugGraphics.clear(); this.debugGraphics.lineStyle(2, 0x00ff00, 0.4); this.debugGraphics.strokeRectShape(this.zoneRotate); this.debugGraphics.lineStyle(2, 0xff0000, 0.4); this.debugGraphics.strokeRectShape(this.zoneThrust); }
+            setupTouchControls() { this.updateTouchZonesLayout(); if (!this.input.listeners('pointerdown').length) { this.input.on('pointerdown', this.handlePointerDown, this); this.input.on('pointermove', this.handlePointerMove, this); this.input.on('pointerup', this.handlePointerUp, this); this.input.on('gameout', () => { if (this.touchRotatePointer) this.handlePointerUp(this.touchRotatePointer); if (this.touchThrustPointer) this.handlePointerUp(this.touchThrustPointer); }, this); console.log("Touch event listeners initialized."); } }
+            handlePointerDown(pointer) { if (!this.zoneRotate || !this.zoneThrust) return; const x = pointer.x; const y = pointer.y; if (Phaser.Geom.Rectangle.Contains(this.zoneRotate, x, y)) { if (this.touchRotatePointer === null) { this.touchRotatePointer = pointer; this.touchRotateStartX = x; } } else if (Phaser.Geom.Rectangle.Contains(this.zoneThrust, x, y)) { if (this.touchThrustPointer === null) { this.touchThrustPointer = pointer; this.touchThrusting = true; } } }
+            handlePointerMove(pointer) { if (this.touchRotatePointer && pointer.id === this.touchRotatePointer.id) { const deltaX = pointer.x - this.touchRotateStartX; const deadZone = 4; if (deltaX < -deadZone) { this.touchRotatingLeft = true; this.touchRotatingRight = false; } else if (deltaX > deadZone) { this.touchRotatingRight = true; this.touchRotatingLeft = false; } else { this.touchRotatingLeft = false; this.touchRotatingRight = false; } } }
+            handlePointerUp(pointer) { if (this.touchRotatePointer && pointer.id === this.touchRotatePointer.id) { this.touchRotatePointer = null; this.touchRotatingLeft = false; this.touchRotatingRight = false; this.touchRotateStartX = 0; } if (this.touchThrustPointer && pointer.id === this.touchThrustPointer.id) { this.touchThrustPointer = null; this.touchThrusting = false; } }
+
+
+            update(time, delta) {
+                // (Update logic remains the same)
+                if (!this.player || !this.cursors) return; const body = this.player.body;
+                if (this.touchThrustPointer && !this.touchThrustPointer.isDown) { this.handlePointerUp(this.touchThrustPointer); } if (this.touchRotatePointer && !this.touchRotatePointer.isDown) { this.handlePointerUp(this.touchRotatePointer); } else if (this.touchRotatePointer && this.touchRotatePointer.isDown) { this.handlePointerMove(this.touchRotatePointer); }
+                let shouldRotateLeft = this.cursors.left.isDown || this.touchRotatingLeft; let shouldRotateRight = this.cursors.right.isDown || this.touchRotatingRight; let shouldThrust = this.cursors.up.isDown || this.touchThrusting;
+
+                // **USER CHANGE:** Adjusted thrust magnitude
+                const rotationRate = 0.08; const thrustMagnitude = 0.001; // Was 0.0016
+                const angularDamping = 0.80;
+
+                if (shouldRotateLeft) { this.player.setAngularVelocity(-rotationRate); }
+                else if (shouldRotateRight) { this.player.setAngularVelocity(rotationRate); }
+                else { this.player.setAngularVelocity(this.player.body.angularVelocity * angularDamping); }
+                if (shouldThrust) { const angle = this.player.rotation - Math.PI / 2; const forceX = Math.cos(angle) * thrustMagnitude; const forceY = Math.sin(angle) * thrustMagnitude; this.player.applyForce({ x: forceX, y: forceY }); }
+            } // End update
+
+            // --- Removed Old Collision Handlers ---
+
+        } // End of PlayScene Class
+
+        // --- Phaser Game Configuration ---
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            physics: {
+                default: 'matter',
+                matter: {
+                    // **USER CHANGE:** Adjusted gravity
+                    gravity: { y: 0.32 }, // Was 0.5
+                    debug: true,
+                    debugBodyColor: 0xffffff
+                }
+            },
+            scene: PlayScene,
+            backgroundColor: '#222222'
+        };
+
+        // --- Create Phaser Game Instance ---
+        const game = new Phaser.Game(config);
+
+    </script>
+</body>
+</html>
